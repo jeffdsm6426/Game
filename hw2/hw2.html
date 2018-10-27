@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" name="viewport" content="text/html, charset=utf-8, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=3.0">
+<title>CG homework -- 410406116</title>
+<style>
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  font-family: Monospace;
+  font-size: 12px;
+  padding: 5px;
+  text-align: center;
+  color: #003333
+}
+
+a {
+  color: purple
+}
+
+</style>
+</head>
+
+<body> 
+<div id="info">
+  <br>Sound, BGM, and Collision<br><br> with BGM (<a href="javascript:toggle();">dimmer</a>)<br>
+  <button id="play" style="width:20%">Play</button>
+  <br> <a href="https://developers.google.com/web/updates/2017/09/autoplay-policy-changes">Chrome autoplay policy change</a>
+
+</div>
+
+<audio id="collisionsound" style="display:none">
+<source src="https://jyunming-chen.github.io/gameHWhelpers/sounds/collision3.wav" type='audio/wav'>
+</audio>
+
+<audio id="soundtrack" autoplay loop style="display:none">
+<source src="https://jyunming-chen.github.io/gameHWhelpers/sounds/KennyG.mp3" type='audio/mp3'>
+</audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/84/three.min.js"></script>
+<script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+<script>
+$('#play').click(function() {
+  isPaused = !isPaused;
+  if (isPaused) {
+    $('#play').text('Play')
+    soundTrack.pause()
+  } else {
+    $('#play').text('Pause')
+    soundTrack.play()
+  }
+});
+
+class Ball {
+  constructor(mesh, rad = 2, color) {
+
+    this.pos = new THREE.Vector3()
+    this.vel = new THREE.Vector3()
+    this.force = new THREE.Vector3()
+    this.mesh = mesh;
+    this.radius = rad;
+    this.light = new THREE.PointLight(color, 1, 50);
+    scene.add(this.light)
+    scene.add(this.mesh) // add to scene when particle is created
+
+    //  console.log(color)
+    this.mesh.material.color.copy(color.clone());
+  }
+  update(dt) {
+    this.vel.add(this.force.clone().multiplyScalar(dt))
+    this.pos.add(this.vel.clone().multiplyScalar(dt))
+
+    this.collidingPlanes(planes)
+    // simple collision
+    /*
+    if (this.pos.z > 100 - this.radius) {
+      	const CR = 0.9
+      	this.pos.z = 100 - this.radius
+        this.vel.z = - CR * this.vel.z;
+      }
+    */
+    this.mesh.position.copy(this.pos)
+    this.light.position.copy(this.pos)
+    this.light.position.y += 20
+  }
+
+  collidingPlanes(planes) {
+    const EPS = 1e-3
+    const CR = 1
+    for (let i = 0; i < planes.length; i++) {
+      let plane = planes[i]
+      let point = this.pos.clone().sub(plane.ptOnPl)
+      if (point.dot(plane.normal) < EPS + this.radius) {
+        // position correction
+        this.pos.copy(plane.ptOnPl.clone().add(point.projectOnPlane(plane.normal)))
+        this.pos.add(plane.normal.clone().multiplyScalar(this.radius))
+        // velocity update
+        this.vel.sub(plane.normal.clone().multiplyScalar((1 + CR) * this.vel.dot(plane.normal)))
+        //return;  // assume particle collides with AT MOST one plane
+      }
+    }
+  }
+
+
+
+
+}
+
+class Plane {
+  constructor(localPointOnPlane, localNormal, mesh) {
+    this.localPtOnPl = localPointOnPlane.clone();
+    this.localNormal = localNormal.clone();
+    console.log(this.localPtOnPl);
+    this.mesh = mesh; // the graphics representation
+    scene.add(mesh)
+  }
+  update() {
+    this.mesh.updateMatrixWorld() // important!
+    this.ptOnPl = this.mesh.localToWorld(this.localPtOnPl.clone());
+    let normalMat = new THREE.Matrix3().getNormalMatrix(this.mesh.matrixWorld);
+    this.normal = this.localNormal.clone().applyMatrix3(normalMat).normalize()
+  }
+}
+
+///////////////////////////////////////////////////////////////////////
+var camera, scene, renderer, light;
+var ball
+var planes = []
+var balls = []
+var clock = new THREE.Clock();
+var collisionSound, soundTrack;
+var isDimming = false,
+  soundVal = 1.0,
+  sign = 1.0;
+var isPaused = false;
+init();
+animate();
+
+function toggle() {
+  isDimming = !isDimming;
+  sign = isDimming ? -1 : 1;
+  // console.log (isDimming);
+}
+
+
+function init() {
+  scene = new THREE.Scene();
+  collisionSound = document.getElementById('collisionsound');
+  soundTrack = document.getElementById('soundtrack');
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 1000);
+  camera.position.y = 200;
+  camera.position.z = 300;
+
+  light = new THREE.PointLight(0xffffff);
+  light.position.set(100, 300, 200);
+  scene.add(light);
+
+  var gridXZ = new THREE.GridHelper(200, 20, 'red', 'white');
+  //scene.add(gridXZ);
+  var floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshPhongMaterial({
+    color: 0x888888
+  }))
+  floor.rotation.x = -Math.PI / 2
+  scene.add(floor)
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x888888);
+
+  let controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+  document.body.appendChild(renderer.domElement);
+  ///////////////////////////////////////////////////////////
+
+  disk = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 6, 32), new THREE.MeshBasicMaterial())
+
+  ball = new Ball(disk, 10, new THREE.Color(0x0055ff))
+  ball.vel.set(-10, 0, 15)
+  ball.pos.set(50, 3, 40)
+  balls.push(ball)
+
+  disk = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 6, 32), new THREE.MeshBasicMaterial())
+
+  ball = new Ball(disk, 10, new THREE.Color(0x440044))
+  ball.vel.set(5, 0, -1)
+  ball.pos.set(30, 3, 30)
+  balls.push(ball)
+
+  disk = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 6, 32), new THREE.MeshBasicMaterial())
+
+  ball = new Ball(disk, 10, new THREE.Color(0x440000))
+  ball.vel.set(2, 0, -7)
+  ball.pos.set(35, 3, 0)
+  balls.push(ball)
+
+  disk = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 6, 32), new THREE.MeshBasicMaterial())
+
+  ball = new Ball(disk, 10, new THREE.Color(0xff0000))
+  ball.vel.set(2, 0, 15)
+  ball.pos.set(15, 3, 10)
+  balls.push(ball)
+
+  disk = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 6, 32), new THREE.MeshBasicMaterial())
+
+  ball = new Ball(disk, 10, new THREE.Color(0xff2200))
+  ball.vel.set(5, 0, 7)
+  ball.pos.set(70, 3, 40)
+  balls.push(ball)
+
+  disk = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 6, 32), new THREE.MeshBasicMaterial())
+
+  ball = new Ball(disk, 10, new THREE.Color(0xff4488))
+  ball.vel.set(1, 0, 15)
+  ball.pos.set(-5, 3, -20)
+  balls.push(ball)
+
+
+
+  let plane, wall
+  wall = new THREE.Mesh(new THREE.BoxGeometry(220, 30, 10), new THREE.MeshPhongMaterial({
+    color: 0xa3a1a1
+  }))
+  scene.add(wall)
+  wall.position.z = 105
+  plane = new Plane(new THREE.Vector3(0, 0, -5), new THREE.Vector3(0, 0, -1), wall)
+  plane.update()
+  planes.push(plane)
+
+  wall = new THREE.Mesh(new THREE.BoxGeometry(220, 30, 10), new THREE.MeshPhongMaterial())
+  scene.add(wall)
+  wall.position.z = -105
+  plane = new Plane(new THREE.Vector3(0, 0, 5), new THREE.Vector3(0, 0, 1), wall.clone())
+  plane.update()
+  planes.push(plane)
+
+  wall = new THREE.Mesh(new THREE.BoxGeometry(220, 30, 10), new THREE.MeshPhongMaterial())
+  scene.add(wall)
+  wall.position.x = 105
+  wall.rotation.y = Math.PI / 2;
+  plane = new Plane(new THREE.Vector3(0, 0, -5), new THREE.Vector3(0, 0, -1), wall.clone())
+  plane.update()
+  planes.push(plane)
+
+  wall = new THREE.Mesh(new THREE.BoxGeometry(220, 30, 10), new THREE.MeshPhongMaterial())
+  scene.add(wall)
+  wall.position.x = -105;
+  wall.rotation.y = Math.PI / 2;
+  plane = new Plane(new THREE.Vector3(0, 0, 5), new THREE.Vector3(0, 0, 1), wall.clone())
+  plane.update()
+  planes.push(plane)
+
+}
+
+function animate() {
+
+  balls.forEach(function(b) {
+    b.update(0.3)
+  })
+  for (var i = 0; i < balls.length; i++) {
+    for (var j = i; j < balls.length; j++) {
+      if (balls[i].pos.distanceTo(balls[j].pos) < balls[i].radius + balls[j].radius) {
+
+        var a = balls[i].vel.clone();
+
+        balls[i].vel.x = balls[j].vel.x;
+        balls[i].vel.z = balls[j].vel.z;
+
+        balls[j].pos.copy(balls[i].pos.clone().add(balls[j].pos.clone().sub(balls[i].pos.clone()).normalize().multiplyScalar(2 * balls[i].radius + 1)))
+        balls[j].vel.x = a.x;
+        balls[j].vel.z = a.z;
+
+
+      }
+
+    }
+  }
+
+  requestAnimationFrame(animate);
+  render();
+}
+
+function render() {
+  renderer.render(scene, camera);
+}
+
+</script>
+</body>
+
+</html>
